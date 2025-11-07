@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from dotenv import load_dotenv
 
+from .exceptions import WeatherException
 from .models import UserCity
 from .services import WeatherService
 from .serializers import UserCitySerializer
@@ -80,41 +81,63 @@ class UserCityViewSet(viewsets.ModelViewSet):
 
 
 class Weather(viewsets.ViewSet):
-    """Выдаёт погоду на 1 - 3 дня."""
-    def create(self, request):
-        # Получаем параметры из тела POST-запроса
+
+    def _get_weather_data(self, request, required_days=None):
         """
-        city = request.data.get('city')
-        получаем из тела запроса город
+        Общий метод для получения данных о погоде.
+        Отдаёт списки данных, город и дни.
         """
         user = request.data.get('user')
-        # получаем город через user пользователя в базе
-        # если нужно найти по ID в базе, то (id=user)
         take_response_city = request.data.get('city')
         if take_response_city is None:
-            city = UserCity.objects.get(user=user).city
+            try:
+                city = UserCity.objects.get(user=user).city
+            except UserCity.DoesNotExist:
+                raise WeatherException(
+                    'Данного пользователя нет в базе.', 
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
         else:
             city = take_response_city
-        # print(city)  # TODO СДЕЛАТЬ УСЛОВИЕ ЕСЛИ ПЕРЕДАН В ТЕЛЕ, ЕСЛИ НЕ ПЕРЕДАН В ТЕЛЕ, ТО ИЩЕМ В БАЗЕ
-        days = request.data.get('days')
-
-        # Проверка необходимых параметров
-        if not city or not days:
-            return Response(
-                {'error': 'Missing parameters: city and days are required.'},
-                status=status.HTTP_400_BAD_REQUEST
+        if not city:
+            raise WeatherException(
+                'Missing parameter: city',
+                status_code=status.HTTP_400_BAD_REQUEST
             )
-        # Создаем сервисный объект
+        if not request.data.get('days'):
+            raise WeatherException(
+                'Missing parameter: days',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        else:
+            days = request.data.get('days')
         weather_service = WeatherService(API_KEY, WEATHER_URL)
         try:
-            data = weather_service.fetch_data(city, days)
-            forecast = weather_service.get_data_for_day(data)
+            data = weather_service.fetch_data(city, days=days)
+            return data, city
+        except WeatherException as e:
+            raise e
         except Exception as e:
-            # Обработка ошибок при вызове API или парсинге
-            return Response(
-                {'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            raise WeatherException(
+                f'Weather service error: {str(e)}',
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=False, methods=['post'])
+    def weather_to_days(self, request):
+        """Выдаёт погоду на на 1 - 3 дня."""
+        try:
+            data, city = self._get_weather_data(
+                request, required_days=True
+            )
+            forecast = WeatherService(
+                API_KEY, WEATHER_URL
+            ).get_data_for_day(data)
+        except WeatherException as e:
+            return Response(
+                {'error': str(e)},
+                status=e.status_code
+            )
         return Response({
             'city': city,
             'forecast': forecast,
@@ -123,33 +146,16 @@ class Weather(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def today(self, request):
         """Выдаёт погоду на сегодня."""
-        # city = request.data.get('city')
-        user = request.data.get('user')
-        print(f'user {user}')
-        take_response_city = request.data.get('city')
-        print(f'take_response_city {take_response_city}')
-        if take_response_city is None:
-            city = UserCity.objects.get(user=user).city
-            
-        else:
-            city = take_response_city
-        print(f'city {city}')
-        days = 1
-        if not city:
-            return Response(
-                {'error': 'Missing parameter: city'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        weather_service = WeatherService(API_KEY, WEATHER_URL)
         try:
-            data = weather_service.fetch_data(city, days=days)
-            forecast = weather_service.get_data_for_day(data)
-            today_forecast = forecast[days - 1] if forecast else {}  # for what? #TODO
-            # print(today_forecast)
-        except Exception as e:
+            data, city = self._get_weather_data(request)
+            forecast = WeatherService(
+                API_KEY, WEATHER_URL
+            ).get_data_for_day(data)
+            today_forecast = forecast[0] if forecast else {}
+        except WeatherException as e:
             return Response(
-                {'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {'error': str(e)},
+                status=e.status_code
             )
 
         return Response({
@@ -162,36 +168,23 @@ class Weather(viewsets.ViewSet):
         """Эндпоинт для получения данных за текущий,
         округленный к ближайшему, час.
         """
-        # city = request.data.get('city')
-        user = request.data.get('user')
-        take_response_city = request.data.get('city')
-        if take_response_city is None:
-            city = UserCity.objects.get(user=user).city
-        else:
-            city = take_response_city
-        days = 1
-        if not city:
-            return Response(
-                {'error': 'Missing parameter: city'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        weather_service = WeatherService(API_KEY, WEATHER_URL)
-
         try:
+            data, city = self._get_weather_data(request)
             # Округление времени
             now = datetime.now()
             rounded_time = now + timedelta(minutes=30)
             rounded_hour = rounded_time.replace(
                 minute=0, second=0, microsecond=0
             ).hour
-            data = weather_service.fetch_data(city, days=days)
-            this_time_forecast = weather_service.get_data_for_hour(
+            this_time_forecast = WeatherService(
+                API_KEY, WEATHER_URL
+            ).get_data_for_hour(
                 data, hour=rounded_hour
             )
-        except Exception as e:
+        except WeatherException as e:
             return Response(
-                {'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {'error': str(e)},
+                status=e.status_code
             )
 
         return Response({

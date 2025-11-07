@@ -55,7 +55,9 @@ async def fetch_weather_data(api_url, payload):
                 try:
                     error_data = await response.json()
                     error_message = error_data.get('error', 'Unknown error')
+                    print(f'error_message {error_message}')
                 except Exception as e:
+                    print(f'eeeee{e}')
                     error_message = await response.text(e)
                 return None, None, response.status, error_message
 
@@ -164,7 +166,8 @@ async def process_city(message: types.Message, state: FSMContext):
                     await message.answer(
                         # f'Ошибка при запоминании города: {response.status}',
                         # reply_markup=main_menu_keyboard
-                        f'❌ Ошибка при сохранении города: {response.status}. {error_text}\n'
+                        f'❌ Ошибка при сохранении города: {response.status}.'
+                        f'{error_text}\n'
                         'Пожалуйста, попробуйте еще раз:'
                     )
     except Exception as e:
@@ -245,7 +248,7 @@ async def handle_weather_request(
     city, forecast, status, error_message = await fetch_weather_data(
         api_url, payload
     )
-
+    # print(status)
     if status == 200:
         if isinstance(forecast, list):
             # Для прогноза на несколько дней
@@ -257,12 +260,11 @@ async def handle_weather_request(
             # Для прогноза на один день
             await message.answer(f"🌤 Погода в {city}: {forecast}")
     else:
-        if status == 400 and (
-            'city' in str(error_message).lower()
-            or 'not found' in str(error_message).lower()
-        ):
+        # Используем конкретное сообщение об ошибке от API
+        if status == 400:
+            # Для ошибок валидации (неправильный город и т.д.)
             await message.answer(
-                "❌ Город не найден или произошла ошибка.\n"
+                f"❌ {error_message}\n"
                 "Пожалуйста, укажите ваш город еще раз:"
             )
             await state.update_data(
@@ -274,28 +276,35 @@ async def handle_weather_request(
                 )
             )
             await state.set_state(WeatherStates.waiting_city)
-        else:
+        elif status == 500:
+            # Для внутренних ошибок сервера
             await message.answer(
-                f'❌ Ошибка при получении погоды: {status}. {error_message}'
+                f"❌ Внутренняя ошибка сервера: {error_message}\n"
+                "Пожалуйста, попробуйте позже."
+            )
+        else:
+            # Для всех остальных ошибок
+            await message.answer(
+                f'❌ Ошибка при получении погоды (код {status}): {error_message}'
             )
 
 
 @router.message(Command(commands=['weather']))
 async def weather_command(message: types.Message, state: FSMContext):
-    api_url = 'http://127.0.0.1:8000/weather/'
+    api_url = 'http://127.0.0.1:8000/weather/weather_to_days/'
     await handle_weather_request(message, state, api_url, '3')
 
 
 @router.message(Command(commands=['today']))
 async def weather_today(message: types.Message, state: FSMContext):
     api_url = 'http://127.0.0.1:8000/weather/today/'
-    await handle_weather_request(message, state, api_url)
+    await handle_weather_request(message, state, api_url, '1')
 
 
 @router.message(Command(commands=['now']))
 async def weather_now(message: types.Message, state: FSMContext):
     api_url = 'http://127.0.0.1:8000/weather/now/'
-    await handle_weather_request(message, state, api_url)
+    await handle_weather_request(message, state, api_url, '1')
 
 
 # @router.message(Command(commands=['weather']))

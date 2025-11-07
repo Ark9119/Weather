@@ -2,6 +2,8 @@
 import requests
 from pprint import pprint
 
+from .exceptions import WeatherException
+
 
 class WeatherService:
     """Список полей для извлечения.
@@ -24,10 +26,18 @@ class WeatherService:
         self.api_url = api_url
 
     def fetch_data(self, city, days):
+        """Запрос и получение джейсона с данными."""
         url = f'{self.api_url}?key={self.api_key}&q={city}&days={days}'
         response = requests.get(url)
+        if response.status_code == 400:
+            raise WeatherException(
+                'Ошибка в написании города.', status_code=response.status_code
+            )
         if response.status_code != 200:
-            raise Exception('Ошибка при получении данных API')
+            raise WeatherException(
+                'Ошибка при получении данных API',
+                status_code=response.status_code
+            )
         return response.json()
 
     def get_data_for_day(self, data):
@@ -41,6 +51,8 @@ class WeatherService:
             for field in self.hourly_fields:
                 hourly_info[field] = self.every_hour_field(hourly_data, field)
             results.append({
+                'found_country': data['location']['country'],
+                'found_city': data['location']['name'],
                 'date': date,
                 **hourly_info
             })
@@ -57,11 +69,12 @@ class WeatherService:
             for field in self.hourly_fields:
                 hourly_info[field] = self.every_hour_field(hourly_data, field)
             day_result = {
+                'found_country': data['location']['country'],
+                'found_city': data['location']['name'],
                 'date': date
             }
             for field in self.hourly_fields:
                 day_result[field] = hourly_info[field][hour]
-                # print(f'{field} for hour {hour}: {day_result[field]}')
             results.append(day_result)
         return results
 
