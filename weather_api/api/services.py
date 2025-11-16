@@ -1,6 +1,5 @@
 # services.py
 import requests
-from pprint import pprint
 
 from .exceptions import WeatherException
 

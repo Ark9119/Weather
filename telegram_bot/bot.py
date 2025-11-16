@@ -11,6 +11,10 @@ from aiogram.types import (
     ReplyKeyboardRemove
 )
 from dotenv import load_dotenv
+from response_transformation import (
+    mapping_weather_for_days,
+    mapping_weather_for_now
+)
 
 load_dotenv()
 
@@ -38,33 +42,54 @@ main_menu_keyboard = ReplyKeyboardMarkup(
 )
 
 
-async def make_api_request(api_url: str, payload: dict = None, method: str = 'POST'):
+async def make_api_request(
+    api_url: str,
+    payload: dict = {},
+    method: str = 'POST'
+):
     """Универсальная функция для API-запросов"""
     async with aiohttp.ClientSession() as session:
         async with session.request(method, api_url, json=payload) as response:
             try:
-                data = await response.json() if response.status != 204 else None
-            except:
-                data = None  
-            if response.status in (200, 201):
-                return data, response.status, None
-            else:
-                error_msg = data.get('error', 'Unknown error') if data else await response.text()
-                return None, response.status, error_msg
+                data = (
+                    await response.json()
+                )
+            except Exception:
+                data = None
+            if response.status == 200:
+                return data
+            elif response.status == 400:
+                if data and isinstance(data, dict):
+                    print(f'data.items() {data.items()}')
+                    print(f'response.text() {response.text()}')
+                    # Извлекаем первую ошибку из любого поля
+                    for field, errors in data.items():
+                        if isinstance(errors, list) and errors:
+                            error_msg = errors[0]  # Берем первую ошибку
+                            print(f'error_msg list {error_msg}')
+                            break
+                        elif isinstance(errors, str):
+                            error_msg = errors
+                            print(f'error_msg str {error_msg}')
+                            break
+                    else:
+                        error_msg = "Неизвестная ошибка валидации"
+                else:
+                    error_msg = await response.text() or "Неизвестная ошибка"
 
-
-async def check_user_exists(user_id: int) -> bool:
-    """Только проверка существования"""
-    api_url = f'http://127.0.0.1:8000/city/{user_id}/'
-    data, status, error = await make_api_request(api_url, method='GET')
-    return status == 200
+                print(f"Validation error: {error_msg}")
+                raise ValueError(error_msg)
+            else:  # проверка на 500
+                error_msg = await response.text()
+                print(f'error2 {error_msg}')
+                raise Exception(f'Сервис недоступен: {error_msg}')
 
 
 async def get_user_city(user_id: int) -> str | None:
     """Получение города пользователя"""
     api_url = f'http://127.0.0.1:8000/city/{user_id}/'
-    data, status, error = await make_api_request(api_url, method='GET')
-    return data.get('city') if status == 200 else None
+    data = await make_api_request(api_url, method='GET')
+    return data.get('city')
 
 
 async def save_user_city(user_id: int, city: str):
@@ -74,35 +99,39 @@ async def save_user_city(user_id: int, city: str):
     return await make_api_request(api_url, payload)
 
 
-async def get_weather_data(user_id: int, endpoint: str, days: str = None):
+async def get_weather_data(user_id: int, endpoint: str, days: int):
     """Получает данные о погоде"""
     api_url = f'http://127.0.0.1:8000/weather/{endpoint}/'
-    payload = {'user': user_id}
-    if days:
-        payload['days'] = days
-        
-    data, status, error = await make_api_request(api_url, payload)
-    if status == 200:
-        city = data.get('city')
-        forecast = data.get('forecast')
-        return city, forecast, status, error
-    return None, None, status, error
+    payload = {
+        'user': user_id,
+        'days': days
+    }
+    data = await make_api_request(api_url, payload)
+    city = data.get('city')
+    forecast = data.get('forecast')
+    return city, forecast
 
 
 @router.message(CommandStart())
 async def start_cmd(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-
-    user_exists = await check_user_exists(user_id)
-    if user_exists:
-        city = await get_user_city(user_id)
-
-    if not user_exists:
+    """
+    Команда старт. Проверяет по ID пользователя, если его нет в базе апи
+    - просит ввести город, если есть - здоровается
+    """
+    if not message.from_user:
         await message.answer(
-            f'Добро пожаловать! 👋\n\n'
+            'Ошибка: не удалось идентифицировать пользователя'
+        )
+        return
+    user_id = message.from_user.id
+    city = await get_user_city(user_id)
+
+    if not city:
+        await message.answer(
+            'Добро пожаловать! 👋\n\n'
             'Я ваш погодный бот. Для начала работы нужно указать ваш город.\n'
             'Пожалуйста, введите название города:',
-            reply_markup=ReplyKeyboardRemove()  # Убираем клавиатуру при первом запуске
+            reply_markup=ReplyKeyboardRemove()
         )
         await state.update_data(user_id=user_id)
         await state.set_state(WeatherStates.waiting_city)
@@ -121,28 +150,25 @@ async def process_city(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     user_id = user_data.get('user_id', message.from_user.id)
 
-    if not city:
-        await message.answer(
-            "Пожалуйста, введите корректное название города:",
-            reply_markup=ReplyKeyboardRemove()  # Убираем клавиатуру при пустом вводе
-            )
-        return
-
-    data, status, error = await save_user_city(user_id, city)
-    
-    if status in (200, 201):
+    try:
+        data = await save_user_city(user_id, city)
         saved_city = data.get('city')
         await message.answer(
             f'Город {saved_city} успешно сохранен!',
             reply_markup=main_menu_keyboard
         )
         await state.clear()
-    else:
-        error_msg = error or 'Неизвестная ошибка'
+    except ValueError as e:
         await message.answer(
-            f'❌ Ошибка при сохранении города: {error_msg}\n'
+            f'❌ {str(e)}\n'
             'Пожалуйста, попробуйте еще раз:',
-            reply_markup=ReplyKeyboardRemove()  # Убираем клавиатуру при ошибке
+            reply_markup=ReplyKeyboardRemove()
+        )
+    except Exception as e:
+        # Обработка ошибки 500 (проблемы с сервером)
+        await message.answer(
+            f'❌ Произошла ошибка сервера {e}. Пожалуйста, попробуйте позже.',
+            reply_markup=ReplyKeyboardRemove()
         )
 
 
@@ -150,50 +176,32 @@ async def handle_weather_request(
     message: types.Message,
     state: FSMContext,
     endpoint: str,
-    days: str = None
+    days: int
 ):
     """Общая функция для обработки запросов погоды"""
     user_id = message.from_user.id
 
-    user_exists = await check_user_exists(user_id)
-
-    if not user_exists:
+    try:
+        city, forecast = await get_weather_data(user_id, endpoint, days)
+        for day in forecast:
+            if endpoint == 'weather_to_days' or endpoint == 'today':
+                await message.answer(mapping_weather_for_days(city, day))
+            elif endpoint == 'now':
+                await message.answer(mapping_weather_for_now(city, day))
+    except ValueError as e:
+        # Обработка ошибки 400 (город не найден)
         await message.answer(
-            '📍 Для получения прогноза погоды'
-            'сначала нужно указать ваш город.\n'
-            'Пожалуйста, введите название города:',
-            reply_markup=ReplyKeyboardRemove()  # Убираем клавиатуру
+            f'❌ {str(e)}\n'
+            'Пожалуйста, укажите ваш город еще раз:',
+            reply_markup=ReplyKeyboardRemove()
         )
         await state.update_data(user_id=user_id)
         await state.set_state(WeatherStates.waiting_city)
-        return
-
-    city, forecast, status, error = await get_weather_data(
-        user_id, endpoint, days
-    )
-
-    if status == 200:
-        if isinstance(forecast, list):
-            weather_text = f"🌤 Прогноз погоды в {city}:\n\n"
-            for i, day in enumerate(forecast, 1):
-                weather_text += f"День {i}: {day}\n"
-            await message.answer(weather_text)
-        else:
-            await message.answer(f"🌤 Погода в {city}: {forecast}")
-    else:
-        error_msg = error or 'Неизвестная ошибка'
-        if status == 400:
-            await message.answer(
-                f"❌ {error_msg}\n"
-                'Пожалуйста, укажите ваш город еще раз:',
-                reply_markup=ReplyKeyboardRemove()  # Убираем клавиатуру при ошибке города
-            )
-            await state.update_data(
-                user_id=user_id,
-            )
-            await state.set_state(WeatherStates.waiting_city)
-        else:
-            await message.answer(f'❌ Ошибка при получении погоды: {error_msg}')
+    except Exception as e:
+        # Обработка ошибки 500 (проблемы с сервером)
+        await message.answer(
+            f'❌ Произошла ошибка сервера {e}. Пожалуйста, попробуйте позже.'
+        )
 
 
 @router.message(F.text == "Изменить город")
@@ -201,24 +209,24 @@ async def change_city(message: types.Message, state: FSMContext):
     await state.update_data(user_id=message.from_user.id)
     await message.answer(
         'Введите название вашего города:',
-        reply_markup=ReplyKeyboardRemove()  # Убираем клавиатуру при изменении города
+        reply_markup=ReplyKeyboardRemove()
         )
     await state.set_state(WeatherStates.waiting_city)
 
 
 @router.message(F.text == "Погода на 3 дня")
 async def weather_3_days(message: types.Message, state: FSMContext):
-    await handle_weather_request(message, state, 'weather_to_days', '3')
+    await handle_weather_request(message, state, 'weather_to_days', 3)
 
 
 @router.message(F.text == "Погода сегодня")
 async def weather_today(message: types.Message, state: FSMContext):
-    await handle_weather_request(message, state, 'today', '1')
+    await handle_weather_request(message, state, 'today', 1)
 
 
 @router.message(F.text == "Погода сейчас")
 async def weather_now(message: types.Message, state: FSMContext):
-    await handle_weather_request(message, state, 'now', '1')
+    await handle_weather_request(message, state, 'now', 1)
 
 
 async def main():

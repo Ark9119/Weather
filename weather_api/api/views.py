@@ -94,7 +94,7 @@ class Weather(viewsets.ViewSet):
                 city = UserCity.objects.get(user=user).city
             except UserCity.DoesNotExist:
                 raise WeatherException(
-                    'Данного пользователя нет в базе.', 
+                    'Данного пользователя нет в базе.',
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
         else:
@@ -151,7 +151,7 @@ class Weather(viewsets.ViewSet):
             forecast = WeatherService(
                 API_KEY, WEATHER_URL
             ).get_data_for_day(data)
-            today_forecast = forecast[0] if forecast else {}
+            today_forecast = forecast  # [0] if forecast else {} - это если нужно возвращать один день, а не список дней с одним днём
         except WeatherException as e:
             return Response(
                 {'error': str(e)},
