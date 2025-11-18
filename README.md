@@ -87,4 +87,4 @@ POST /weather/now/ - сейчас
 ```
 
 Автор проекта: [Ivan Kuznetsov]
-(https://github.com/Ark9119/api-yamdb)
+(https://github.com/Ark9119/Weather)
