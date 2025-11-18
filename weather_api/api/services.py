@@ -1,4 +1,3 @@
-# services.py
 import requests
 
 from .exceptions import WeatherException

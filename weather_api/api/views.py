@@ -1,13 +1,8 @@
-# views.py
 import os
 from datetime import datetime, timedelta
-import random
 
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets, exceptions
 from rest_framework.decorators import action
-from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from dotenv import load_dotenv
@@ -15,8 +10,9 @@ from dotenv import load_dotenv
 from .exceptions import WeatherException
 from .models import UserCity
 from .services import WeatherService
-from .serializers import UserCitySerializer
-
+from .serializers import (
+    UserCitySerializer,
+)
 
 load_dotenv()
 
@@ -24,7 +20,6 @@ API_KEY = os.getenv('WEATHEAPI_KEY')
 WEATHER_URL = os.getenv('WEATHER_URL')
 
 
-# @method_decorator(csrf_exempt, name='dispatch')
 class UserCityViewSet(viewsets.ModelViewSet):
     queryset = UserCity.objects.all()
     serializer_class = UserCitySerializer
@@ -42,9 +37,8 @@ class UserCityViewSet(viewsets.ModelViewSet):
         return obj
 
     def create(self, request, *args, **kwargs):
-        print("Create method called")
+        # print("Create method called")
         user_id = request.data.get('user')
-        # city = request.data.get('city')
 
         # Если user_id не передан, возвращаем ошибку
         if not user_id:
@@ -82,7 +76,7 @@ class UserCityViewSet(viewsets.ModelViewSet):
 
 class Weather(viewsets.ViewSet):
 
-    def _get_weather_data(self, request, required_days=None):
+    def _get_weather_data(self, request):
         """
         Общий метод для получения данных о погоде.
         Отдаёт списки данных, город и дни.
@@ -127,9 +121,7 @@ class Weather(viewsets.ViewSet):
     def weather_to_days(self, request):
         """Выдаёт погоду на на 1 - 3 дня."""
         try:
-            data, city = self._get_weather_data(
-                request, required_days=True
-            )
+            data, city = self._get_weather_data(request)
             forecast = WeatherService(
                 API_KEY, WEATHER_URL
             ).get_data_for_day(data)
@@ -151,7 +143,7 @@ class Weather(viewsets.ViewSet):
             forecast = WeatherService(
                 API_KEY, WEATHER_URL
             ).get_data_for_day(data)
-            today_forecast = forecast  # [0] if forecast else {} - это если нужно возвращать один день, а не список дней с одним днём
+            today_forecast = forecast
         except WeatherException as e:
             return Response(
                 {'error': str(e)},
