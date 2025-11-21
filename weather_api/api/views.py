@@ -78,7 +78,6 @@ class UserCityViewSet(viewsets.ModelViewSet):
 
 
 class Weather(viewsets.ViewSet):
-    # serializer_class = WeatherRequestSerializer
 
     def _get_weather_data(self, validated_data):
         """

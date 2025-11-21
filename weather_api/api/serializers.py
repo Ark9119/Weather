@@ -1,7 +1,9 @@
 from rest_framework import serializers
 
 from .constants import (
-    MAX_LENGTH_CITY
+    MAX_LENGTH_CITY,
+    MIN_DAYS_VALUE,
+    MAX_DAYS_VALUE
 )
 from .models import UserCity
 
@@ -44,11 +46,17 @@ class WeatherRequestSerializer(serializers.Serializer):
         )
     )
     days = serializers.IntegerField(
-        min_value=1,
-        max_value=3,
+        min_value=MIN_DAYS_VALUE,
+        max_value=MAX_DAYS_VALUE,
         error_messages={
-            'min_value': 'days должно быть в диапазоне от 1 до 3, включительно.',
-            'max_value': 'days должно быть в диапазоне от 1 до 3, включительно.'
+            'min_value': (
+                f'days должно быть в диапазоне от'
+                f'{MIN_DAYS_VALUE} до {MAX_DAYS_VALUE}, включительно.'
+            ),
+            'max_value': (
+                f'days должно быть в диапазоне от'
+                f'{MIN_DAYS_VALUE} до {MAX_DAYS_VALUE}, включительно.'
+            )
         },
         help_text='Количество дней для прогноза (1-3).'
     )

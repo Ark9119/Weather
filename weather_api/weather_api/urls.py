@@ -23,7 +23,6 @@ schema_view = get_schema_view(
             email='ark9119@yandex.ru',
             url='https://github.com/Ark9119'
         ),
-        # license=openapi.License(name='BSD License'),
         license=openapi.License(
             name='Проприетарная лицензия',
             url='https://github.com/Ark9119/weather/blob/main/LICENSE'
