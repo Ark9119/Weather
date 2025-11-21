@@ -30,6 +30,9 @@
 [![Aiogram](https://img.shields.io/badge/Aiogram-3.x-2C9C49%3Flogo%3Dtelegram%26logoColor%3Dwhite)](https://aiogram.dev/)
 
 
+## Документация в swagger формате доступна по эндпоинту:
+http://127.0.0.1:8000/swagger/
+
 ## Примеры запросов к API:
 
 ### Сохранение/изменение города(привязка к идентификатору пользователя):

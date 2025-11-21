@@ -79,9 +79,9 @@ async def make_api_request(
                             print(f'error_msg str {error_msg}')
                             break
                     else:
-                        error_msg = "Неизвестная ошибка валидации"
+                        error_msg = 'Неизвестная ошибка валидации'
                 else:
-                    error_msg = await response.text() or "Неизвестная ошибка"
+                    error_msg = await response.text() or 'Неизвестная ошибка'
                 raise ValueError(error_msg)
             else:  # проверка на 500
                 error_msg = await response.text()
@@ -203,7 +203,7 @@ async def handle_weather_request(
         )
 
 
-@router.message(F.text == "Изменить город")
+@router.message(F.text == 'Изменить город')
 async def change_city(message: types.Message, state: FSMContext):
     await state.update_data(user_id=message.chat.id)
     await message.answer(
@@ -213,17 +213,17 @@ async def change_city(message: types.Message, state: FSMContext):
     await state.set_state(WeatherStates.waiting_city)
 
 
-@router.message(F.text == "Погода на 3 дня")
+@router.message(F.text == 'Погода на 3 дня')
 async def weather_3_days(message: types.Message, state: FSMContext):
     await handle_weather_request(message, state, 'weather_to_days', 3)
 
 
-@router.message(F.text == "Погода сегодня")
+@router.message(F.text == 'Погода сегодня')
 async def weather_today(message: types.Message, state: FSMContext):
     await handle_weather_request(message, state, 'today', 1)
 
 
-@router.message(F.text == "Погода сейчас")
+@router.message(F.text == 'Погода сейчас')
 async def weather_now(message: types.Message, state: FSMContext):
     await handle_weather_request(message, state, 'now', 1)
 
