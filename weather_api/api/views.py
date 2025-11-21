@@ -6,12 +6,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from dotenv import load_dotenv
+from drf_yasg.utils import swagger_auto_schema
 
 from .exceptions import WeatherException
 from .models import UserCity
 from .services import WeatherService
 from .serializers import (
     UserCitySerializer,
+    WeatherRequestSerializer,
+    WeatherResponseSerializer
 )
 
 load_dotenv()
@@ -37,7 +40,7 @@ class UserCityViewSet(viewsets.ModelViewSet):
         return obj
 
     def create(self, request, *args, **kwargs):
-        # print("Create method called")
+        """Внесение в базу пользователя и привязка города к его имени."""
         user_id = request.data.get('user')
 
         # Если user_id не передан, возвращаем ошибку
@@ -76,110 +79,92 @@ class UserCityViewSet(viewsets.ModelViewSet):
 
 class Weather(viewsets.ViewSet):
 
-    def _get_weather_data(self, request):
+    def _get_weather_data(self, validated_data):
         """
         Общий метод для получения данных о погоде.
-        Отдаёт списки данных, город и дни.
+        Теперь принимает validated_data вместо request
         """
-        user = request.data.get('user')
-        take_response_city = request.data.get('city')
-        if take_response_city is None:
-            try:
-                city = UserCity.objects.get(user=user).city
-            except UserCity.DoesNotExist:
-                raise WeatherException(
-                    'Данного пользователя нет в базе.',
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-        else:
-            city = take_response_city
-        if not city:
-            raise WeatherException(
-                'Missing parameter: city',
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-        if not request.data.get('days'):
-            raise WeatherException(
-                'Missing parameter: days',
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-        else:
-            days = request.data.get('days')
+        user = validated_data.get('user')
+        city = validated_data.get('city')
+        # Если city не указан, берем из профиля пользователя
+        if city is None:
+            city = UserCity.objects.get(user=user).city
+        days = validated_data['days']
         weather_service = WeatherService(API_KEY, WEATHER_URL)
+        data = weather_service.fetch_data(city, days=days)
+        return data, city
+
+    def _process_weather_request(
+        self, request, forecast_callback, *callback_args
+    ):
+        """
+        Базовый метод для обработки weather запросов с обработкой исключений.
+        """
+        serializer = WeatherRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)  # Валидация входных данных
         try:
-            data = weather_service.fetch_data(city, days=days)
-            return data, city
+            data, city = self._get_weather_data(serializer.validated_data)
+            forecast = forecast_callback(data, *callback_args)
+            # Используем сериализатор для валидации ответа
+            response_data = {
+                'city': city,
+                'forecast': forecast,
+            }
+            response_serializer = WeatherResponseSerializer(data=response_data)
+            response_serializer.is_valid(raise_exception=True)
+            return Response(response_serializer.data)
         except WeatherException as e:
-            raise e
+            return Response(
+                {'error': str(e)},
+                status=e.status_code
+            )
         except Exception as e:
-            raise WeatherException(
-                f'Weather service error: {str(e)}',
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return Response(
+                {'error': f'Weather service error: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @swagger_auto_schema(
+        request_body=WeatherRequestSerializer,
+        responses={200: WeatherResponseSerializer}
+    )
     @action(detail=False, methods=['post'])
     def weather_to_days(self, request):
         """Выдаёт погоду на на 1 - 3 дня."""
-        try:
-            data, city = self._get_weather_data(request)
-            forecast = WeatherService(
-                API_KEY, WEATHER_URL
-            ).get_data_for_day(data)
-        except WeatherException as e:
-            return Response(
-                {'error': str(e)},
-                status=e.status_code
-            )
-        return Response({
-            'city': city,
-            'forecast': forecast,
-        })
+        return self._process_weather_request(
+            request,
+            WeatherService(API_KEY, WEATHER_URL).get_data_for_day
+        )
 
+    @swagger_auto_schema(
+        request_body=WeatherRequestSerializer,
+        responses={200: WeatherResponseSerializer}
+    )
     @action(detail=False, methods=['post'])
     def today(self, request):
         """Выдаёт погоду на сегодня."""
-        try:
-            data, city = self._get_weather_data(request)
-            forecast = WeatherService(
-                API_KEY, WEATHER_URL
-            ).get_data_for_day(data)
-            today_forecast = forecast
-        except WeatherException as e:
-            return Response(
-                {'error': str(e)},
-                status=e.status_code
-            )
+        return self._process_weather_request(
+            request,
+            WeatherService(API_KEY, WEATHER_URL).get_data_for_day
+        )
 
-        return Response({
-            'city': city,
-            'forecast': today_forecast
-        })
-
+    @swagger_auto_schema(
+        request_body=WeatherRequestSerializer,
+        responses={200: WeatherResponseSerializer}
+    )
     @action(detail=False, methods=['post'])
     def now(self, request):
         """Эндпоинт для получения данных за текущий,
         округленный к ближайшему, час.
         """
-        try:
-            data, city = self._get_weather_data(request)
-            # Округление времени
-            now = datetime.now()
-            rounded_time = now + timedelta(minutes=30)
-            rounded_hour = rounded_time.replace(
-                minute=0, second=0, microsecond=0
-            ).hour
-            this_time_forecast = WeatherService(
-                API_KEY, WEATHER_URL
-            ).get_data_for_hour(
-                data, hour=rounded_hour
-            )
-        except WeatherException as e:
-            return Response(
-                {'error': str(e)},
-                status=e.status_code
-            )
-
-        return Response({
-            'city': city,
-            'forecast': this_time_forecast
-        })
+        # Округление времени
+        now = datetime.now()
+        rounded_time = now + timedelta(minutes=30)
+        rounded_hour = rounded_time.replace(
+            minute=0, second=0, microsecond=0
+        ).hour
+        return self._process_weather_request(
+            request,
+            WeatherService(API_KEY, WEATHER_URL).get_data_for_hour,
+            rounded_hour
+        )
