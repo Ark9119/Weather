@@ -164,7 +164,7 @@ class Weather(viewsets.ViewSet):
             minute=0, second=0, microsecond=0
         ).hour
         return self._process_weather_request(
-            request, 
+            request,
             WeatherService(API_KEY, WEATHER_URL).get_data_for_hour,
             rounded_hour
         )
