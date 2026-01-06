@@ -1,10 +1,10 @@
-def test_weather_to_days_response(client, valid_request_data_for_days):
+def test_weather_to_days_response(client, valid_request_data_for_3_days):
     """
     Тест успешного запроса к weather_to_days эндпоинту
     """
     response = client.post(
         '/weather/weather_to_days/',
-        data=valid_request_data_for_days,
+        data=valid_request_data_for_3_days,
         format='json'
     )
     response_data = response.json()
