@@ -1,18 +1,17 @@
 import os
 from datetime import datetime, timedelta
 
-from rest_framework import viewsets, exceptions
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from dotenv import load_dotenv
 from drf_yasg.utils import swagger_auto_schema
 
+from .auth import get_city_from_auth_service
 from .exceptions import WeatherException
-from .models import UserCity
 from .services import WeatherService
 from .serializers import (
-    UserCitySerializer,
     WeatherRequestSerializer,
     WeatherResponseSerializer
 )
@@ -23,72 +22,32 @@ API_KEY = os.getenv('WEATHEAPI_KEY')
 WEATHER_URL = os.getenv('WEATHER_URL')
 
 
-class UserCityViewSet(viewsets.ModelViewSet):
-    queryset = UserCity.objects.all()
-    serializer_class = UserCitySerializer
-
-    def get_object(self):
-        # Получаем число из URL
-        user_id = self.kwargs.get('pk')
-        try:
-            # Ищем объект по полю user
-            obj = UserCity.objects.get(user=user_id)
-        except UserCity.DoesNotExist:
-            raise exceptions.NotFound(
-                'UserCity with specified user not found.'
-            )
-        return obj
-
-    def create(self, request, *args, **kwargs):
-        """Внесение в базу пользователя и привязка города к его имени."""
-        user_id = request.data.get('user')
-
-        # Если user_id не передан, возвращаем ошибку
-        if not user_id:
-            return Response(
-                {'error': 'user is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            instance = UserCity.objects.get(user=user_id)
-            # Обновляем существующую запись
-            serializer = self.get_serializer(
-                instance, data=request.data, partial=True
-            )
-        except UserCity.DoesNotExist:
-            # Создаем новую запись
-            serializer = self.get_serializer(data=request.data)
-
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
-
-    def update(self, request, *args, **kwargs):
-        """пут запрос к /sity/<id>, передаём user и sity - меняем sity"""
-        user = request.data.get('user')
-        obj = UserCity.objects.get(user=user)
-        serializer = self.get_serializer(obj, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-
 class Weather(viewsets.ViewSet):
 
     def _get_weather_data(self, validated_data):
         """
         Общий метод для получения данных о погоде.
-        Теперь принимает validated_data вместо request
+        Теперь получает город из микросервиса weather_auth.
         """
         user = validated_data.get('user')
         city = validated_data.get('city')
-        # Если city не указан, берем из профиля пользователя
+        # Если city не указан, получаем из weather_auth по username
         if city is None:
-            city = UserCity.objects.get(user=user).city
+            if not user:
+                # Если user не указан, вызываем исключение
+                raise WeatherException(
+                    'Необходимо указать либо user, либо city.',
+                    status_code=400
+                )
+            # Получаем город из weather_auth по username
+            city = get_city_from_auth_service(user)
+            if city is None:
+                raise WeatherException(
+                    f'Город не найден для пользователя {user}. '
+                    'Пожалуйста, укажите город '
+                    'или зарегистрируйтесь в системе.',
+                    status_code=404
+                )
         days = validated_data['days']
         weather_service = WeatherService(API_KEY, WEATHER_URL)
         data = weather_service.fetch_data(city, days=days)
@@ -101,11 +60,10 @@ class Weather(viewsets.ViewSet):
         Базовый метод для обработки weather запросов с обработкой исключений.
         """
         serializer = WeatherRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)  # Валидация входных данных
+        serializer.is_valid(raise_exception=True)
         try:
             data, city = self._get_weather_data(serializer.validated_data)
             forecast = forecast_callback(data, *callback_args)
-            # Используем сериализатор для валидации ответа
             response_data = {
                 'city': city,
                 'forecast': forecast,

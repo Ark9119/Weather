@@ -17,7 +17,13 @@ class WeatherService:
     'chance_of_snow'
     Больше/меньше полей можно настроить на сайте weatherapi.com.
     """
-    hourly_fields = ['temp_c', 'cloud', 'humidity', 'chance_of_rain']
+    hourly_fields = [
+        'temp_c',
+        'cloud',
+        'humidity',
+        'chance_of_rain',
+        'chance_of_snow'
+    ]
 
     def __init__(self, api_key, api_url):
         self.api_key = api_key

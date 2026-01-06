@@ -5,25 +5,6 @@ from .constants import (
     MIN_DAYS_VALUE,
     MAX_DAYS_VALUE
 )
-from .models import UserCity
-
-
-class UserCitySerializer(serializers.ModelSerializer):
-    city = serializers.CharField(
-        max_length=MAX_LENGTH_CITY,
-        error_messages={
-            'max_length': 'Название города не может превышать 100 символов.'
-        }
-    )
-
-    class Meta:
-        model = UserCity
-        fields = ('user', 'city')
-
-    def create(self, validated_data):
-        user = validated_data.get('user')
-        city = validated_data.get('city')
-        return UserCity.objects.create(user=user, city=city)
 
 
 class WeatherRequestSerializer(serializers.Serializer):
@@ -69,14 +50,6 @@ class WeatherRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 'Необходимо указать либо user, либо city.'
             )
-        # Если указан user, проверяем что он существует в базе
-        if data.get('user') and not data.get('city'):
-            try:
-                UserCity.objects.get(user=data['user'])
-            except UserCity.DoesNotExist:
-                raise serializers.ValidationError(
-                    'Данного пользователя нет в базе.'
-                )
         return data
 
 
