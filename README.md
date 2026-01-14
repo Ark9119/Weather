@@ -5,10 +5,10 @@
 принимающий и обрабатывающий ответы.
 
 ## Все проекты экосистемы
-https://github.com/Ark9119/Weather_AUTH
-https://github.com/Ark9119/Weather
-https://github.com/Ark9119/Weather_bot
-https://github.com/Ark9119/Weather_web
+- https://github.com/Ark9119/Weather_AUTH
+- https://github.com/Ark9119/Weather
+- https://github.com/Ark9119/Weather_bot
+- https://github.com/Ark9119/Weather_web
 
 ## Лицензия: 
 [![License](https://img.shields.io/badge/License-View-blue)](LICENSE)

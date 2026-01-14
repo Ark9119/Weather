@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://127.0.0.1:8002')
+AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL')  # , 'http://127.0.0.1:8002')
 
 
 def get_city_from_auth_service(username: str) -> str | None:
