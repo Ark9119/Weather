@@ -1,0 +1,15 @@
+Из /Weather/weather_api
+
+собрать образ
+
+docker build -t weather_api .
+
+запустить контейнер
+
+docker run -d \
+  --name weather_api \
+  -p 8001:8001 \
+  --env-file .env \
+  --rm \
+  weather_api:latest
+

@@ -1,0 +1,16 @@
+services:
+  weather_api:
+    build:  # Автоматически соберёт образ из Dockerfile в текущей директории
+      context: ./weather_api  # ← Контекст = папка с Dockerfile
+      dockerfile: Dockerfile
+    image: weather_api:latest
+    container_name: weather_api
+    ports:
+      - "8001:8001"
+    env_file: .env
+    restart: unless-stopped
+    # Флаг --rm не требуется, так как при выполнении `docker compose down` 
+    # контейнеры автоматически удаляются
+
+# docker compose up --build -d
+# docker compose down
